@@ -23,7 +23,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.polawa.superlift"
+      "package": "fr.polawa.superlift"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -35,7 +35,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "c7761b55-53c0-4b1f-9d75-25f178d6c382"
+        "projectId": "53a5ba83-caf4-4df3-b12b-99bc89a415bb"
       }
     }
   }
