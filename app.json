@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "app-force",
-    "slug": "app-force",
-    "scheme": "app-force",
+    "name": "superlift",
+    "slug": "superlift",
+    "scheme": "superlift",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
