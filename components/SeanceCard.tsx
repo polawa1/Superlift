@@ -19,12 +19,14 @@ const TYPE_LABEL: Record<string, string> = {
   hypertrophie: 'Hypertrophie',
   force: 'Force',
   decharge: 'Décharge',
+  test_max: 'Test max',
 }
 
 const TYPE_COLOR: Record<string, string> = {
   hypertrophie: '#6366f1',
   force: '#f59e0b',
   decharge: '#10b981',
+  test_max: '#ef4444',
 }
 
 export function SeanceCard({ seance }: Props) {

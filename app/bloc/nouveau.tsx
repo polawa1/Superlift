@@ -7,6 +7,7 @@ import { genererSeancesBloc } from '../../services/dupService'
 import { seedExercices } from '../../db/seed'
 import { useTheme } from '../../context/ThemeContext'
 import { Colors } from '../../constants/colors'
+import { useSettingsStore } from '../../store/settingsStore'
 
 export default function NouveauBlocScreen() {
   const router = useRouter()
@@ -15,6 +16,7 @@ export default function NouveauBlocScreen() {
   const [unRm, setUnRm] = useState('')
   const { colors } = useTheme()
   const s = makeStyles(colors)
+  const { incrementTestMax } = useSettingsStore()
 
   useEffect(() => {
     async function charger() {
@@ -33,7 +35,7 @@ export default function NouveauBlocScreen() {
 
     const dateDebut = new Date().toISOString().split('T')[0]
     const [bloc] = await db.insert(blocsForce).values({ dateDebut, exerciceId, unRmKg }).returning()
-    const seancesPlanifiees = genererSeancesBloc(bloc.id, exerciceId, unRmKg, new Date())
+    const seancesPlanifiees = genererSeancesBloc(bloc.id, exerciceId, unRmKg, new Date(), incrementTestMax)
 
     for (const s of seancesPlanifiees) {
       const [seance] = await db.insert(seances).values({ date: s.date, exerciceId: s.exerciceId, blocId: s.blocId, typeSeance: s.typeSeance, statut: s.statut }).returning()

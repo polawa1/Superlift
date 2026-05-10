@@ -9,6 +9,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { useTheme } from '../../context/ThemeContext'
 import { Colors } from '../../constants/colors'
 import { useThemeStore } from '../../store/themeStore'
+import { useSettingsStore } from '../../store/settingsStore'
 
 type Objectif = {
   id: number
@@ -31,6 +32,7 @@ export default function ParametresScreen() {
   const [drafts, setDrafts] = useState<Draft>({})
   const { colors, isDark } = useTheme()
   const { override, setOverride } = useThemeStore()
+  const { incrementTestMax, setIncrementTestMax } = useSettingsStore()
   const s = makeStyles(colors)
   const ch = makeChStyles(colors)
 
@@ -115,6 +117,22 @@ export default function ParametresScreen() {
                 thumbColor={colors.bgCard}
               />
             </View>
+            <View style={s.reglageRow}>
+              <Text style={s.toggleLabel}>Incrément test max</Text>
+              <View style={s.segmented}>
+                {([0.025, 0.05, 0.075] as const).map((v) => (
+                  <TouchableOpacity
+                    key={v}
+                    style={[s.segment, incrementTestMax === v && s.segmentActif]}
+                    onPress={() => setIncrementTestMax(v)}
+                  >
+                    <Text style={[s.segmentTexte, incrementTestMax === v && s.segmentTexteActif]}>
+                      +{v * 100}%
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
             <Text style={s.sectionTitre}>Objectifs par exercice</Text>
           </>
         }
@@ -181,7 +199,13 @@ function makeStyles(c: Colors) {
   return StyleSheet.create({
     liste: { padding: 16, gap: 16 },
     titrePage: { fontSize: 20, fontWeight: 'bold', marginBottom: 16, color: c.text },
-    toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: c.borderLight, marginBottom: 16 },
+    toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: c.borderLight, marginBottom: 12 },
+    reglageRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderColor: c.borderLight, marginBottom: 16 },
+    segmented: { flexDirection: 'row', borderRadius: 8, borderWidth: 1, borderColor: c.borderInput, overflow: 'hidden' },
+    segment: { paddingHorizontal: 16, paddingVertical: 8, backgroundColor: c.bgInput },
+    segmentActif: { backgroundColor: c.btnPrimary },
+    segmentTexte: { fontSize: 13, fontWeight: '600', color: c.textSub },
+    segmentTexteActif: { color: c.btnPrimaryText },
     toggleLabel: { fontSize: 15, color: c.text },
     sectionTitre: { fontSize: 16, fontWeight: '700', color: c.text, marginBottom: 8 },
     carte: { borderWidth: 1, borderColor: c.borderLight, borderRadius: 10, padding: 14, backgroundColor: c.bgCard, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, elevation: 2 },

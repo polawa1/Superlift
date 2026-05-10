@@ -20,13 +20,24 @@ export default function SeanceScreen() {
   const { seriesEnCours, notesEnCours, chargerSeries, chargerNotes, ajouterNote } = useSeanceStore()
   const [noteVisible, setNoteVisible] = useState(false)
   const [noteTexte, setNoteTexte] = useState('')
+  const [estCloturee, setEstCloturee] = useState(false)
   const { colors } = useTheme()
   const s = makeStyles(colors)
 
   useEffect(() => {
     async function ouvrirSeance() {
-      await db.update(seances).set({ statut: 'EN_COURS' }).where(eq(seances.id, seanceId))
-      await cloturerSeancePrecedente(seanceId)
+      const [seance] = await db.select().from(seances).where(eq(seances.id, seanceId))
+      const cloturee = !!seance?.clotureeAt
+      setEstCloturee(cloturee)
+      if (cloturee) {
+        // Répare le statut si corrompu par un bug précédent
+        if (seance?.statut !== 'CLOTUREE') {
+          await db.update(seances).set({ statut: 'CLOTUREE' }).where(eq(seances.id, seanceId))
+        }
+      } else {
+        await db.update(seances).set({ statut: 'EN_COURS' }).where(eq(seances.id, seanceId))
+        await cloturerSeancePrecedente(seanceId)
+      }
       chargerSeries(seanceId)
       chargerNotes(seanceId)
     }
@@ -54,7 +65,7 @@ export default function SeanceScreen() {
           data={seriesEnCours}
           keyExtractor={(item) => String(item.id)}
           ListEmptyComponent={<Text style={s.vide}>Aucune série pour cette séance</Text>}
-          renderItem={({ item, index }) => <SerieRow serie={item} index={index} />}
+          renderItem={({ item, index }) => <SerieRow serie={item} index={index} readOnly={estCloturee} />}
           ListFooterComponent={
             notesEnCours.length > 0 ? (
               <View style={s.notesSection}>
@@ -74,12 +85,18 @@ export default function SeanceScreen() {
           <TouchableOpacity style={s.btnRetour} onPress={() => router.back()}>
             <Text style={s.btnRetourTexte}>← Retour</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.btnNote} onPress={() => setNoteVisible(true)}>
-            <Text style={s.btnNoteTexte}>+ Note</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.btnCloturer} onPress={terminerSeance}>
-            <Text style={s.btnCloturerTexte}>Clôturer ✓</Text>
-          </TouchableOpacity>
+          {estCloturee ? (
+            <Text style={s.labelCloturee}>Séance clôturée</Text>
+          ) : (
+            <>
+              <TouchableOpacity style={s.btnNote} onPress={() => setNoteVisible(true)}>
+                <Text style={s.btnNoteTexte}>+ Note</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.btnCloturer} onPress={terminerSeance}>
+                <Text style={s.btnCloturerTexte}>Clôturer ✓</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
         <Modal visible={noteVisible} transparent animationType="slide" onRequestClose={() => setNoteVisible(false)}>
@@ -122,6 +139,7 @@ function makeStyles(c: Colors) {
     btnNoteTexte: { color: c.text, fontWeight: '600' },
     btnCloturer: { backgroundColor: '#22c55e', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10 },
     btnCloturerTexte: { color: '#fff', fontWeight: '700' },
+    labelCloturee: { fontSize: 13, color: c.textMuted, fontStyle: 'italic', alignSelf: 'center' },
     notesSection: { padding: 12, borderTopWidth: 1, borderColor: c.borderLight },
     notesTitre: { fontSize: 13, fontWeight: '600', color: c.textSub, marginBottom: 8 },
     noteItem: { flexDirection: 'row', gap: 8, marginBottom: 6 },
