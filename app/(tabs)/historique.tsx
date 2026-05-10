@@ -2,11 +2,14 @@ import { useState, useCallback } from 'react'
 import { View, Text, FlatList, StyleSheet, TouchableOpacity } from 'react-native'
 import { useFocusEffect } from 'expo-router'
 import { db } from '../../db'
-import { seances, series, exercices } from '../../db/schema'
+import { seances, series, exercices, blocsForce } from '../../db/schema'
 import { eq, and } from 'drizzle-orm'
 import { estimer1RM } from '../../services/progressionService'
 import { CourbeProgression } from '../../components/CourbeProgression'
 import { CourbeVolume } from '../../components/CourbeVolume'
+import { CourbeComparaisonBlocs, DonneeBloc, COULEURS } from '../../components/CourbeComparaisonBlocs'
+import { useTheme } from '../../context/ThemeContext'
+import { Colors } from '../../constants/colors'
 
 type ExerciceId = number
 
@@ -22,20 +25,17 @@ type SeanceCloturee = {
 
 type VolumeHebdo = { semaine: string; volumeKg: number }
 
-const EXERCICES_IDS: ExerciceId[] = []
-
 export default function HistoriqueScreen() {
   const [seancesCloturees, setSeancesCloturees] = useState<SeanceCloturee[]>([])
   const [volumeHebdo, setVolumeHebdo] = useState<Record<ExerciceId, VolumeHebdo[]>>({})
   const [courbes, setCourbes] = useState<Record<ExerciceId, { jour: number; rm: number }[]>>({})
+  const [comparaisonBlocs, setComparaisonBlocs] = useState<Record<ExerciceId, DonneeBloc[]>>({})
   const [exercicesFiltres, setExercicesFiltres] = useState<{ id: ExerciceId; nom: string }[]>([])
   const [exerciceActif, setExerciceActif] = useState<ExerciceId | null>(null)
+  const { colors } = useTheme()
+  const s = makeStyles(colors)
 
-  useFocusEffect(
-    useCallback(() => {
-      charger()
-    }, [])
-  )
+  useFocusEffect(useCallback(() => { charger() }, []))
 
   async function charger() {
     const exos = await db.select().from(exercices)
@@ -43,63 +43,60 @@ export default function HistoriqueScreen() {
     if (exos.length > 0) setExerciceActif(exos[0].id)
 
     const rows = await db
-      .select({
-        id: seances.id,
-        date: seances.date,
-        typeSeance: seances.typeSeance,
-        exerciceId: seances.exerciceId,
-        nomExercice: exercices.nom,
-      })
+      .select({ id: seances.id, date: seances.date, typeSeance: seances.typeSeance, exerciceId: seances.exerciceId, nomExercice: exercices.nom })
       .from(seances)
       .innerJoin(exercices, eq(seances.exerciceId, exercices.id))
 
     const enrichies: SeanceCloturee[] = []
-
     for (const row of rows) {
-      const seriesSeance = await db
-        .select()
-        .from(series)
-        .where(and(eq(series.seanceId, row.id), eq(series.statut, 'VALIDEE')))
-
+      const seriesSeance = await db.select().from(series).where(and(eq(series.seanceId, row.id), eq(series.statut, 'VALIDEE')))
       if (seriesSeance.length === 0) continue
-
       const volume = seriesSeance.reduce((sum, s) => sum + s.chargeKg * s.reps, 0)
-      const rm = seriesSeance.reduce((max, s) => {
-        const v = estimer1RM(s.chargeKg, s.reps)
-        return v > max ? v : max
-      }, 0)
-
+      const rm = seriesSeance.reduce((max, s) => { const v = estimer1RM(s.chargeKg, s.reps); return v > max ? v : max }, 0)
       enrichies.push({ ...row, rmEstime: Math.round(rm * 10) / 10, volumeKg: Math.round(volume) })
     }
-
     enrichies.sort((a, b) => a.date.localeCompare(b.date))
     setSeancesCloturees(enrichies)
 
-    // Courbes 1RM par exercice
     const courbsMap: Record<ExerciceId, { jour: number; rm: number }[]> = {}
     for (const exo of exos) {
-      const pts = enrichies
+      courbsMap[exo.id] = enrichies
         .filter((s) => s.exerciceId === exo.id && s.rmEstime > 0)
         .map((s, i) => ({ jour: i + 1, rm: s.rmEstime }))
-      courbsMap[exo.id] = pts
     }
     setCourbes(courbsMap)
 
-    // Volume hebdo
     const volMap: Record<ExerciceId, VolumeHebdo[]> = {}
     for (const exo of exos) {
       const par_semaine: Record<string, number> = {}
-      enrichies
-        .filter((s) => s.exerciceId === exo.id)
-        .forEach((s) => {
-          const sem = getSemaine(s.date)
-          par_semaine[sem] = (par_semaine[sem] ?? 0) + s.volumeKg
-        })
-      volMap[exo.id] = Object.entries(par_semaine)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([semaine, volumeKg]) => ({ semaine, volumeKg }))
+      enrichies.filter((s) => s.exerciceId === exo.id).forEach((s) => {
+        const sem = getSemaine(s.date)
+        par_semaine[sem] = (par_semaine[sem] ?? 0) + s.volumeKg
+      })
+      volMap[exo.id] = Object.entries(par_semaine).sort(([a], [b]) => a.localeCompare(b)).map(([semaine, volumeKg]) => ({ semaine, volumeKg }))
     }
     setVolumeHebdo(volMap)
+
+    const comparMap: Record<ExerciceId, DonneeBloc[]> = {}
+    for (const exo of exos) {
+      const blocs = await db.select().from(blocsForce).where(eq(blocsForce.exerciceId, exo.id))
+      const donneeBlocs: DonneeBloc[] = []
+      for (let i = 0; i < blocs.length; i++) {
+        const bloc = blocs[i]
+        const seancesBloc = await db.select({ id: seances.id, date: seances.date }).from(seances).where(eq(seances.blocId, bloc.id))
+        seancesBloc.sort((a, b) => a.date.localeCompare(b.date))
+        const points: { session: number; rm: number }[] = []
+        for (let j = 0; j < seancesBloc.length; j++) {
+          const seriesSeance = await db.select().from(series).where(and(eq(series.seanceId, seancesBloc[j].id), eq(series.statut, 'VALIDEE')))
+          if (seriesSeance.length === 0) continue
+          const rm = seriesSeance.reduce((max, sr) => { const v = estimer1RM(sr.chargeKg, sr.reps); return v > max ? v : max }, 0)
+          if (rm > 0) points.push({ session: j + 1, rm: Math.round(rm * 10) / 10 })
+        }
+        if (points.length >= 2) donneeBlocs.push({ blocId: bloc.id, dateDebut: bloc.dateDebut, points, couleur: COULEURS[i % COULEURS.length] })
+      }
+      comparMap[exo.id] = donneeBlocs
+    }
+    setComparaisonBlocs(comparMap)
   }
 
   function getSemaine(dateStr: string): string {
@@ -113,18 +110,15 @@ export default function HistoriqueScreen() {
   const recordRM = seancesActives.reduce((max, s) => (s.rmEstime > max ? s.rmEstime : max), 0)
 
   return (
-    <View style={styles.container}>
-      {/* Onglets exercice */}
-      <View style={styles.onglets}>
+    <View style={s.container}>
+      <View style={s.onglets}>
         {exercicesFiltres.map((exo) => (
           <TouchableOpacity
             key={exo.id}
-            style={[styles.onglet, exerciceActif === exo.id && styles.ongletActif]}
+            style={[s.onglet, exerciceActif === exo.id && s.ongletActif]}
             onPress={() => setExerciceActif(exo.id)}
           >
-            <Text style={[styles.ongletTexte, exerciceActif === exo.id && styles.ongletTexteActif]}>
-              {exo.nom}
-            </Text>
+            <Text style={[s.ongletTexte, exerciceActif === exo.id && s.ongletTexteActif]}>{exo.nom}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -134,42 +128,30 @@ export default function HistoriqueScreen() {
         keyExtractor={(item) => String(item.id)}
         ListHeaderComponent={
           <>
-            {/* Courbe 1RM */}
             {exerciceActif !== null && (
-              <CourbeProgression
-                donnees={courbes[exerciceActif] ?? []}
-                nomExercice={exercicesFiltres.find((e) => e.id === exerciceActif)?.nom}
-              />
+              <CourbeProgression donnees={courbes[exerciceActif] ?? []} nomExercice={exercicesFiltres.find((e) => e.id === exerciceActif)?.nom} />
             )}
-
-            {/* Record */}
             {recordRM > 0 && (
-              <View style={styles.record}>
-                <Text style={styles.recordLabel}>Record 1RM estimé</Text>
-                <Text style={styles.recordValeur}>{recordRM} kg</Text>
+              <View style={s.record}>
+                <Text style={s.recordLabel}>Record 1RM estimé</Text>
+                <Text style={s.recordValeur}>{recordRM} kg</Text>
               </View>
             )}
-
-            {/* Volume hebdo */}
-            {exerciceActif !== null && (
-              <CourbeVolume donnees={volumeHebdo[exerciceActif] ?? []} />
-            )}
-
-            <Text style={styles.sectionTitre}>Séances</Text>
+            {exerciceActif !== null && <CourbeVolume donnees={volumeHebdo[exerciceActif] ?? []} />}
+            {exerciceActif !== null && <CourbeComparaisonBlocs blocs={comparaisonBlocs[exerciceActif] ?? []} />}
+            <Text style={s.sectionTitre}>Séances</Text>
           </>
         }
-        ListEmptyComponent={
-          <Text style={styles.vide}>Aucune séance clôturée pour cet exercice</Text>
-        }
+        ListEmptyComponent={<Text style={s.vide}>Aucune séance clôturée pour cet exercice</Text>}
         renderItem={({ item }) => (
-          <View style={styles.carte}>
-            <View style={styles.carteEntete}>
-              <Text style={styles.date}>{item.date}</Text>
-              <Text style={styles.type}>{item.typeSeance}</Text>
+          <View style={s.carte}>
+            <View style={s.carteEntete}>
+              <Text style={s.date}>{item.date}</Text>
+              <Text style={s.type}>{item.typeSeance}</Text>
             </View>
-            <View style={styles.carteStats}>
-              <Text style={styles.stat}>1RM ≈ {item.rmEstime} kg</Text>
-              <Text style={styles.stat}>Volume : {item.volumeKg} kg</Text>
+            <View style={s.carteStats}>
+              <Text style={s.stat}>1RM ≈ {item.rmEstime} kg</Text>
+              <Text style={s.stat}>Volume : {item.volumeKg} kg</Text>
             </View>
           </View>
         )}
@@ -178,30 +160,24 @@ export default function HistoriqueScreen() {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  onglets: { flexDirection: 'row', borderBottomWidth: 1, borderColor: '#eee' },
-  onglet: { flex: 1, paddingVertical: 10, alignItems: 'center' },
-  ongletActif: { borderBottomWidth: 2, borderColor: '#000' },
-  ongletTexte: { fontSize: 12, color: '#888' },
-  ongletTexteActif: { color: '#000', fontWeight: '600' },
-  record: {
-    margin: 12,
-    padding: 12,
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  recordLabel: { fontSize: 13, color: '#555' },
-  recordValeur: { fontSize: 20, fontWeight: 'bold' },
-  sectionTitre: { fontSize: 13, fontWeight: '600', color: '#333', margin: 12, marginBottom: 6 },
-  carte: { padding: 14, borderBottomWidth: 1, borderColor: '#eee' },
-  carteEntete: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  date: { fontSize: 12, color: '#888' },
-  type: { fontSize: 12, color: '#555', textTransform: 'capitalize' },
-  carteStats: { flexDirection: 'row', gap: 16 },
-  stat: { fontSize: 14, fontWeight: '500' },
-  vide: { textAlign: 'center', marginTop: 40, color: '#aaa' },
-})
+function makeStyles(c: Colors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.bg },
+    onglets: { flexDirection: 'row', borderBottomWidth: 1, borderColor: c.borderLight, backgroundColor: c.bgCard },
+    onglet: { flex: 1, paddingVertical: 10, alignItems: 'center' },
+    ongletActif: { borderBottomWidth: 2, borderColor: c.accent },
+    ongletTexte: { fontSize: 12, color: c.textMuted },
+    ongletTexteActif: { color: c.text, fontWeight: '600' },
+    record: { margin: 12, padding: 12, backgroundColor: c.bgMuted, borderRadius: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    recordLabel: { fontSize: 13, color: c.textSub },
+    recordValeur: { fontSize: 20, fontWeight: 'bold', color: c.text },
+    sectionTitre: { fontSize: 13, fontWeight: '600', color: c.text, margin: 12, marginBottom: 6 },
+    carte: { padding: 14, borderBottomWidth: 1, borderColor: c.borderLight, backgroundColor: c.bg },
+    carteEntete: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+    date: { fontSize: 12, color: c.textMuted },
+    type: { fontSize: 12, color: c.textSub, textTransform: 'capitalize' },
+    carteStats: { flexDirection: 'row', gap: 16 },
+    stat: { fontSize: 14, fontWeight: '500', color: c.text },
+    vide: { textAlign: 'center', marginTop: 40, color: c.textFaint },
+  })
+}
