@@ -5,7 +5,7 @@ CREATE TABLE `blocs_force` (
 	`un_rm_kg` real NOT NULL,
 	`protocole` text DEFAULT 'DUP',
 	`nb_semaines` integer DEFAULT 4,
-	`seances_par_semaine` integer DEFAULT 2,
+	`seances_par_semaine` integer DEFAULT seances2,
 	FOREIGN KEY (`exercice_id`) REFERENCES `exercices`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
