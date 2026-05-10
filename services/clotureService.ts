@@ -1,6 +1,6 @@
 import { db } from '../db'
 import { series, seances } from '../db/schema'
-import { eq, and, lt } from 'drizzle-orm'
+import { eq, and, lt, ne } from 'drizzle-orm'
 import { calculerProgression } from './progressionService'
 
 async function _cloturer(seanceId: number, exerciceId: number) {
@@ -45,4 +45,14 @@ export async function cloturerSeance(seanceId: number) {
   const [seance] = await db.select().from(seances).where(eq(seances.id, seanceId))
   if (!seance || seance.statut === 'CLOTUREE') return
   await _cloturer(seanceId, seance.exerciceId)
+
+  if (seance.typeSeance === 'test_max') {
+    const autresSeances = await db
+      .select()
+      .from(seances)
+      .where(and(eq(seances.blocId, seance.blocId), ne(seances.id, seanceId), ne(seances.statut, 'CLOTUREE')))
+    for (const s of autresSeances) {
+      await _cloturer(s.id, s.exerciceId)
+    }
+  }
 }

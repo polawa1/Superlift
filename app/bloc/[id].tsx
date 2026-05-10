@@ -26,7 +26,7 @@ type Semaine = {
   seances: SeanceAvecSerie[]
 }
 
-const PHASES = ['Accumulation', 'Intensification', 'Pic', 'Décharge']
+const PHASES = ['Accumulation', 'Intensification', 'Intensification', 'Pic', 'Décharge']
 
 export default function CalendrierBlocScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -52,14 +52,15 @@ export default function CalendrierBlocScreen() {
     const toutesSeances = await db.select().from(seances).where(eq(seances.blocId, blocId)).orderBy(seances.date)
     const seancesAvecSeries: SeanceAvecSerie[] = await Promise.all(
       toutesSeances.map(async (s) => {
-        const [serie] = await db.select().from(series).where(eq(series.seanceId, s.id)).limit(1)
-        return { id: s.id, date: s.date, typeSeance: s.typeSeance, statut: s.statut, chargeKg: serie?.chargeKg ?? 0, reps: serie?.reps ?? 0, nbSeries: serie?.nbSeries ?? 0 }
+        const allSeries = await db.select().from(series).where(eq(series.seanceId, s.id))
+        return { id: s.id, date: s.date, typeSeance: s.typeSeance, statut: s.statut, chargeKg: allSeries[0]?.chargeKg ?? 0, reps: allSeries[0]?.reps ?? 0, nbSeries: allSeries.length }
       })
     )
 
-    setSemaines([1, 2, 3, 4].map((num) => ({
-      numero: num, label: `Semaine ${num}`, phase: PHASES[num - 1],
-      seances: seancesAvecSeries.slice((num - 1) * 2, (num - 1) * 2 + 2),
+    const nbSemaines = Math.ceil(seancesAvecSeries.length / 2)
+    setSemaines(Array.from({ length: nbSemaines }, (_, i) => ({
+      numero: i + 1, label: `Semaine ${i + 1}`, phase: PHASES[i] ?? '',
+      seances: seancesAvecSeries.slice(i * 2, i * 2 + 2),
     })))
     setLoading(false)
   }
@@ -101,7 +102,7 @@ export default function CalendrierBlocScreen() {
       </View>
 
       <View style={s.legende}>
-        {[{ color: '#6366f1', label: 'Hypertrophie' }, { color: '#f59e0b', label: 'Force' }, { color: '#10b981', label: 'Décharge' }].map((item) => (
+        {[{ color: '#6366f1', label: 'Hypertrophie' }, { color: '#f59e0b', label: 'Force' }, { color: '#10b981', label: 'Décharge' }, { color: '#ef4444', label: 'Test max' }].map((item) => (
           <View key={item.label} style={s.legendeItem}>
             <View style={[s.legendePuce, { backgroundColor: item.color }]} />
             <Text style={s.legendeTexte}>{item.label}</Text>

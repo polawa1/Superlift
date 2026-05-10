@@ -14,9 +14,10 @@ type Props = {
     statut: string | null
   }
   index?: number
+  readOnly?: boolean
 }
 
-export function SerieRow({ serie, index }: Props) {
+export function SerieRow({ serie, index, readOnly = false }: Props) {
   const { validerSerie, invaliderSerie, modifierCharge } = useSeanceStore()
   const [modalVisible, setModalVisible] = useState(false)
   const [chargeTexte, setChargeTexte] = useState(String(serie.chargeKg))
@@ -38,19 +39,21 @@ export function SerieRow({ serie, index }: Props) {
     <>
       <View style={s.container}>
         <View style={[s.indicateur, { backgroundColor: couleurStatut }]} />
-        <TouchableOpacity style={s.info} onPress={() => { setChargeTexte(String(serie.chargeKg)); setModalVisible(true) }}>
+        <TouchableOpacity style={s.info} onPress={() => { if (!readOnly) { setChargeTexte(String(serie.chargeKg)); setModalVisible(true) } }}>
           {index !== undefined && <Text style={s.numero}>Série {index + 1}</Text>}
           <Text style={s.charge}>{serie.chargeKg} kg</Text>
           <Text style={s.detail}>{serie.nbSeries > 1 ? `${serie.nbSeries}×` : ''}{serie.reps} reps{serie.rpe ? `  RPE ${serie.rpe}` : ''}</Text>
         </TouchableOpacity>
-        <View style={s.actions}>
-          <TouchableOpacity style={[s.btn, s.btnValider]} onPress={() => validerSerie(serie.id)}>
-            <Text style={s.btnTexte}>✓</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[s.btn, s.btnInvalider]} onPress={() => invaliderSerie(serie.id)}>
-            <Text style={s.btnTexte}>✗</Text>
-          </TouchableOpacity>
-        </View>
+        {!readOnly && (
+          <View style={s.actions}>
+            <TouchableOpacity style={[s.btn, s.btnValider]} onPress={() => validerSerie(serie.id)}>
+              <Text style={s.btnTexte}>✓</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.btn, s.btnInvalider]} onPress={() => invaliderSerie(serie.id)}>
+              <Text style={s.btnTexte}>✗</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>

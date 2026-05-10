@@ -30,6 +30,7 @@ export default function HistoriqueScreen() {
   const [volumeHebdo, setVolumeHebdo] = useState<Record<ExerciceId, VolumeHebdo[]>>({})
   const [courbes, setCourbes] = useState<Record<ExerciceId, { jour: number; rm: number }[]>>({})
   const [comparaisonBlocs, setComparaisonBlocs] = useState<Record<ExerciceId, DonneeBloc[]>>({})
+  const [meilleurRM, setMeilleurRM] = useState<Record<ExerciceId, { valeur: number; date: string }>>({})
   const [exercicesFiltres, setExercicesFiltres] = useState<{ id: ExerciceId; nom: string }[]>([])
   const [exerciceActif, setExerciceActif] = useState<ExerciceId | null>(null)
   const { colors } = useTheme()
@@ -97,6 +98,24 @@ export default function HistoriqueScreen() {
       comparMap[exo.id] = donneeBlocs
     }
     setComparaisonBlocs(comparMap)
+
+    // Meilleur 1RM réalisé parmi les blocs terminés (séance test_max clôturée)
+    const meilleurMap: Record<ExerciceId, { valeur: number; date: string }> = {}
+    for (const exo of exos) {
+      const blocs = await db.select().from(blocsForce).where(eq(blocsForce.exerciceId, exo.id))
+      let best = 0
+      let bestDate = ''
+      for (const bloc of blocs) {
+        const seancesBloc = await db.select().from(seances).where(eq(seances.blocId, bloc.id))
+        const testMax = seancesBloc.find((s) => s.typeSeance === 'test_max' && s.statut === 'CLOTUREE')
+        if (!testMax) continue
+        const seriesTestMax = await db.select().from(series).where(and(eq(series.seanceId, testMax.id), eq(series.statut, 'VALIDEE')))
+        const rm = seriesTestMax.reduce((max, sr) => sr.chargeKg > max ? sr.chargeKg : max, 0)
+        if (rm > best) { best = rm; bestDate = testMax.date }
+      }
+      if (best > 0) meilleurMap[exo.id] = { valeur: Math.round(best * 10) / 10, date: bestDate }
+    }
+    setMeilleurRM(meilleurMap)
   }
 
   function getSemaine(dateStr: string): string {
@@ -128,12 +147,26 @@ export default function HistoriqueScreen() {
         keyExtractor={(item) => String(item.id)}
         ListHeaderComponent={
           <>
+            {exerciceActif !== null && meilleurRM[exerciceActif] && (
+              <View style={s.bestRM}>
+                <View>
+                  <Text style={s.bestRMLabel}>Meilleur 1RM réalisé</Text>
+                  <Text style={s.bestRMSous}>
+                    {new Date(meilleurRM[exerciceActif].date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </Text>
+                </View>
+                <View style={s.bestRMValeurRow}>
+                  <Text style={s.bestRMValeur}>{meilleurRM[exerciceActif].valeur} kg</Text>
+                  <Text style={s.bestRMTrophee}>🏆</Text>
+                </View>
+              </View>
+            )}
             {exerciceActif !== null && (
               <CourbeProgression donnees={courbes[exerciceActif] ?? []} nomExercice={exercicesFiltres.find((e) => e.id === exerciceActif)?.nom} />
             )}
             {recordRM > 0 && (
               <View style={s.record}>
-                <Text style={s.recordLabel}>Record 1RM estimé</Text>
+                <Text style={s.recordLabel}>Record 1RM estimé (Epley)</Text>
                 <Text style={s.recordValeur}>{recordRM} kg</Text>
               </View>
             )}
@@ -168,6 +201,12 @@ function makeStyles(c: Colors) {
     ongletActif: { borderBottomWidth: 2, borderColor: c.accent },
     ongletTexte: { fontSize: 12, color: c.textMuted },
     ongletTexteActif: { color: c.text, fontWeight: '600' },
+    bestRM: { margin: 12, padding: 16, backgroundColor: c.accent, borderRadius: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    bestRMLabel: { fontSize: 14, fontWeight: '700', color: '#fff' },
+    bestRMSous: { fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
+    bestRMValeurRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    bestRMTrophee: { fontSize: 28 },
+    bestRMValeur: { fontSize: 32, fontWeight: 'bold', color: '#fff' },
     record: { margin: 12, padding: 12, backgroundColor: c.bgMuted, borderRadius: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     recordLabel: { fontSize: 13, color: c.textSub },
     recordValeur: { fontSize: 20, fontWeight: 'bold', color: c.text },
