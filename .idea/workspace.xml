@@ -2,7 +2,11 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="ea39ab87-e580-4577-b40f-011088db48ab" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/eas.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.claude/worktrees/eloquent-mcnulty-a70141" beforeDir="false" afterPath="$PROJECT_DIR$/.claude/worktrees/eloquent-mcnulty-a70141" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.claude/worktrees/stupefied-brattain-142726" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app.json" beforeDir="false" afterPath="$PROJECT_DIR$/app.json" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -49,7 +53,7 @@
       <workItem from="1777064158682" duration="609000" />
       <workItem from="1777064800087" duration="2976000" />
       <workItem from="1777067972109" duration="1084000" />
-      <workItem from="1778416280289" duration="796000" />
+      <workItem from="1778416280289" duration="3701000" />
     </task>
     <servers />
   </component>

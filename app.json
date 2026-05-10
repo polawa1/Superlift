@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "app-force",
-    "slug": "app-force",
-    "scheme": "app-force",
+    "name": "superlift",
+    "slug": "superlift",
+    "scheme": "superlift",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -22,7 +22,8 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "fr.polawa.superlift"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -30,6 +31,12 @@
     "plugins": [
       "expo-sqlite",
       "expo-router"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "53a5ba83-caf4-4df3-b12b-99bc89a415bb"
+      }
+    }
   }
 }
