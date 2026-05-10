@@ -22,7 +22,8 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.polawa.superlift"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -30,6 +31,12 @@
     "plugins": [
       "expo-sqlite",
       "expo-router"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c7761b55-53c0-4b1f-9d75-25f178d6c382"
+      }
+    }
   }
 }
