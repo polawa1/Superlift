@@ -2,7 +2,7 @@
 
 ## Vue d'ensemble
 
-Application mobile cross-platform (Android + iOS) permettant de planifier et suivre une programmation de force sur trois exercices : développé couché, squat, traction.
+Application mobile cross-platform (Android + iOS) permettant de planifier et suivre une programmation de force sur quatre exercices : développé couché, squat, traction, soulevé de terre.
 
 ---
 
@@ -11,6 +11,9 @@ Application mobile cross-platform (Android + iOS) permettant de planifier et sui
 - Développé couché
 - Squat
 - Traction
+- Soulevé de terre
+
+Les exercices sont gérés dynamiquement en base de données via `db/seed.ts` (logique additive — nouveaux exercices ajoutés sans écraser l'existant).
 
 ---
 
@@ -18,25 +21,33 @@ Application mobile cross-platform (Android + iOS) permettant de planifier et sui
 
 | Couche | Technologie |
 |---|---|
-| Framework | React Native + Expo (SDK 51+) |
+| Framework | React Native + Expo (SDK 54) |
 | Langage | TypeScript |
 | Navigation | Expo Router (file-based) |
 | Base de données | Expo SQLite + Drizzle ORM |
 | État global | Zustand |
-| Graphiques | Victory Native |
+| Graphiques | react-native-svg (SVG natif) |
+| Icônes | @expo/vector-icons (Ionicons) |
 | Plateforme | Android + iOS |
 
-### Initialisation du projet
+> `react-native-reanimated` et `victory-native` ne sont pas utilisés. Les graphiques sont implémentés directement avec `react-native-svg`.
 
-```bash
-npx create-expo-app@latest app-force --template blank-typescript
-cd app-force
-npx expo install expo-sqlite
-npm install drizzle-orm drizzle-kit
-npm install zustand
-npm install victory-native react-native-svg
-npm install react-native-reanimated
+### Dépendances clés
+
+```json
+{
+  "expo": "~54.0.33",
+  "react": "19.1.0",
+  "react-native": "0.81.5",
+  "expo-router": "~6.0.23",
+  "expo-sqlite": "~16.0.10",
+  "drizzle-orm": "^0.45.2",
+  "zustand": "^5.0.12",
+  "react-native-svg": "^15.15.4"
+}
 ```
+
+> `react` est épinglé à `19.1.0` (sans `^`) pour correspondre exactement au renderer embarqué dans react-native 0.81.5 et maintenir la compatibilité Expo Go.
 
 ---
 
@@ -46,26 +57,30 @@ npm install react-native-reanimated
 app-force/
 ├── app/                        # Expo Router — écrans
 │   ├── (tabs)/
-│   │   ├── index.tsx           # Accueil — liste des séances
-│   │   ├── historique.tsx      # Historique + stats
+│   │   ├── _layout.tsx         # Tabs avec icônes Ionicons
+│   │   ├── index.tsx           # Accueil — liste des blocs avec progression
+│   │   ├── historique.tsx      # Historique + stats + graphiques
 │   │   └── parametres.tsx      # Config objectifs par exercice
-│   ├── seance/[id].tsx         # Détail d'une séance
-│   └── bloc/nouveau.tsx        # Démarrage d'un bloc DUP
+│   ├── seance/[id].tsx         # Séance active (séries, notes, clôture)
+│   └── bloc/
+│       ├── nouveau.tsx         # Démarrage d'un bloc DUP
+│       └── [id].tsx            # Calendrier du bloc (4 semaines)
 ├── db/
 │   ├── schema.ts               # Schéma Drizzle
+│   ├── seed.ts                 # Seed additif des exercices
 │   ├── migrations/             # Migrations générées
 │   └── index.ts                # Instance SQLite
 ├── store/
-│   ├── seanceStore.ts          # Zustand — état séance en cours
-│   └── blocStore.ts            # Zustand — état bloc actif
+│   └── seanceStore.ts          # Zustand — séries, notes, actions
 ├── services/
 │   ├── dupService.ts           # Génération des séances DUP
-│   ├── progressionService.ts   # Calcul de progression
-│   └── clotureService.ts       # Clôture automatique
+│   ├── progressionService.ts   # Calcul de progression + 1RM Epley
+│   └── clotureService.ts       # Clôture auto et manuelle
 └── components/
-    ├── SerieRow.tsx             # Ligne de série (valider/invalider)
-    ├── SeanceCard.tsx           # Carte séance dans la liste
-    └── CourbeProgression.tsx    # Graphique Victory Native
+    ├── SerieRow.tsx             # Ligne de série avec numéro, validation, modification charge
+    ├── SeanceCard.tsx           # Carte séance dans le calendrier
+    ├── CourbeProgression.tsx    # Graphique SVG — 1RM estimé dans le temps
+    └── CourbeVolume.tsx         # Graphique SVG barres — volume hebdomadaire
 ```
 
 ---
@@ -99,7 +114,7 @@ export const seances = sqliteTable('seances', {
   exerciceId:    integer('exercice_id').notNull().references(() => exercices.id),
   blocId:        integer('bloc_id').notNull().references(() => blocsForce.id),
   typeSeance:    text('type_seance').notNull(), // 'force' | 'hypertrophie' | 'decharge'
-  statut:        text('statut').default('PLANIFIEE'),
+  statut:        text('statut').default('PLANIFIEE'), // 'PLANIFIEE' | 'EN_COURS' | 'CLOTUREE'
   clotureeAt:    integer('cloturee_at'),
   fatiguePercue: integer('fatigue_percue'),
 })
@@ -110,7 +125,7 @@ export const series = sqliteTable('series', {
   exerciceId:         integer('exercice_id').notNull().references(() => exercices.id),
   chargeKg:           real('charge_kg').notNull(),
   reps:               integer('reps').notNull(),
-  nbSeries:           integer('nb_series').notNull(),
+  nbSeries:           integer('nb_series').notNull(), // toujours 1 (une ligne = une série)
   rpe:                real('rpe'),
   statut:             text('statut').default('PLANIFIEE'), // 'PLANIFIEE' | 'VALIDEE' | 'INVALIDEE'
   autoValidee:        integer('auto_validee', { mode: 'boolean' }).default(false),
@@ -156,60 +171,23 @@ export const notesSeance = sqliteTable('notes_seance', {
 | 3 | Pic | 75% × 3×6 (Hypertrophie) | 88% × 3×2 (Force) |
 | 4 | Décharge | 60% × 3×5 (Décharge) | 65% × 3×4 (Décharge) |
 
-### Générateur de séances (services/dupService.ts)
+### Génération des séries
 
-```typescript
-type TypeSeance = 'hypertrophie' | 'force' | 'decharge'
-
-interface ConfigSeance {
-  type: TypeSeance
-  pct: number
-  series: number
-  reps: number
-  jourOffset: number
-}
-
-const PLAN_DUP: ConfigSeance[] = [
-  { type: 'hypertrophie', pct: 0.70, series: 4, reps: 8, jourOffset: 0  },
-  { type: 'force',        pct: 0.82, series: 5, reps: 4, jourOffset: 3  },
-  { type: 'hypertrophie', pct: 0.72, series: 4, reps: 7, jourOffset: 7  },
-  { type: 'force',        pct: 0.85, series: 4, reps: 3, jourOffset: 10 },
-  { type: 'hypertrophie', pct: 0.75, series: 3, reps: 6, jourOffset: 14 },
-  { type: 'force',        pct: 0.88, series: 3, reps: 2, jourOffset: 17 },
-  { type: 'decharge',     pct: 0.60, series: 3, reps: 5, jourOffset: 21 },
-  { type: 'decharge',     pct: 0.65, series: 3, reps: 4, jourOffset: 24 },
-]
-
-function arrondir(kg: number): number {
-  return Math.round(kg / 2.5) * 2.5
-}
-
-export function genererSeancesBloc(
-  blocId: number,
-  exerciceId: number,
-  unRmKg: number,
-  dateDebut: Date
-) {
-  return PLAN_DUP.map((config) => {
-    const date = new Date(dateDebut)
-    date.setDate(date.getDate() + config.jourOffset)
-    return {
-      blocId,
-      exerciceId,
-      date: date.toISOString().split('T')[0],
-      typeSeance: config.type,
-      statut: 'PLANIFIEE' as const,
-      chargeKg: arrondir(unRmKg * config.pct),
-      nbSeries: config.series,
-      reps: config.reps,
-    }
-  })
-}
-```
+Chaque séance génère **une ligne par série individuelle** (`nbSeries: 1`). Une séance avec 4×8 insère donc 4 lignes en DB, chacune validable/invalidable indépendamment.
 
 ---
 
 ## Règles métier
+
+### Cycle de vie d'une séance
+
+```
+PLANIFIEE → EN_COURS → CLOTUREE
+```
+
+- **PLANIFIEE** : état initial à la création du bloc
+- **EN_COURS** : passée à l'ouverture de la séance (`seance/[id].tsx`)
+- **CLOTUREE** : via clôture automatique (ouverture séance suivante) ou manuelle (bouton "Clôturer ✓")
 
 ### Validation des séries
 
@@ -218,165 +196,49 @@ Chaque série est indépendante :
 - **INVALIDEE** — échouée, saisie manuellement
 - **PLANIFIEE** — non renseignée → auto-validée à la clôture
 
-L'échec d'une série n'affecte pas les autres séries de la séance.
+La charge d'une série peut être modifiée à la volée (tap sur la valeur → modal). La modification est tracée via `raisonModification: 'ajustement_manuel'`.
 
-### Clôture automatique (services/clotureService.ts)
+### Clôture (services/clotureService.ts)
 
-**Déclencheur** : ouverture de la séance suivante du même exercice.
+Deux déclencheurs :
 
-```typescript
-import { db } from '../db'
-import { series, seances } from '../db/schema'
-import { eq, and, lt } from 'drizzle-orm'
-import { calculerProgression } from './progressionService'
+1. **Automatique** — à l'ouverture de la séance suivante du même exercice (`cloturerSeancePrecedente`)
+2. **Manuelle** — bouton "Clôturer ✓" dans l'écran séance (`cloturerSeance`)
 
-export async function cloturerSeancePrecedente(seanceIdCourante: number) {
-  const [seanceCourante] = await db
-    .select()
-    .from(seances)
-    .where(eq(seances.id, seanceIdCourante))
+Dans les deux cas :
+- Les séries encore en `PLANIFIEE` sont auto-validées
+- La séance passe en `CLOTUREE` avec horodatage
+- Le calcul de progression est déclenché
 
-  const [precedente] = await db
-    .select()
-    .from(seances)
-    .where(
-      and(
-        eq(seances.exerciceId, seanceCourante.exerciceId),
-        lt(seances.id, seanceIdCourante),
-        eq(seances.statut, 'EN_COURS')
-      )
-    )
-    .orderBy(seances.id)
-    .limit(1)
+### Suppression d'un bloc
 
-  if (!precedente || precedente.statut === 'CLOTUREE') return
+Suppression en cascade depuis le calendrier du bloc (icône `trash-outline`) :
+`notes_seance` → `series` → `seances` → `blocs_force`
 
-  // Auto-validation des séries non renseignées
-  await db
-    .update(series)
-    .set({ statut: 'VALIDEE', autoValidee: true })
-    .where(and(eq(series.seanceId, precedente.id), eq(series.statut, 'PLANIFIEE')))
-
-  // Clôture
-  await db
-    .update(seances)
-    .set({ statut: 'CLOTUREE', clotureeAt: Date.now() })
-    .where(eq(seances.id, precedente.id))
-
-  await calculerProgression(precedente.id, precedente.exerciceId)
-}
-```
+---
 
 ### Calcul de progression (services/progressionService.ts)
 
 ```typescript
-import { db } from '../db'
-import { series, objectifsExercice } from '../db/schema'
-import { eq } from 'drizzle-orm'
+const taux = valideesManuelles / total
 
-function arrondir(kg: number): number {
-  return Math.round(kg / 2.5) * 2.5
-}
-
-export async function calculerProgression(seanceId: number, exerciceId: number) {
-  const toutesLesSeries = await db
-    .select()
-    .from(series)
-    .where(eq(series.seanceId, seanceId))
-
-  const [objectif] = await db
-    .select()
-    .from(objectifsExercice)
-    .where(eq(objectifsExercice.exerciceId, exerciceId))
-
-  if (!objectif) return
-
-  const total = toutesLesSeries.length
-  const valideesManuelles = toutesLesSeries.filter(
-    (s) => s.statut === 'VALIDEE' && !s.autoValidee
-  ).length
-
-  const taux = total > 0 ? valideesManuelles / total : 1
-  const chargeActuelle = toutesLesSeries[0]?.chargeKg ?? objectif.chargeKg
-
-  let nouvelleCharge: number
-  if (taux >= objectif.seuilProgression) {
-    nouvelleCharge = chargeActuelle + objectif.incrementKg
-  } else if (taux >= objectif.seuilMaintien) {
-    nouvelleCharge = chargeActuelle
-  } else {
-    nouvelleCharge = chargeActuelle * (1 - objectif.reductionEchec)
-  }
-
-  await db
-    .update(objectifsExercice)
-    .set({ chargeKg: arrondir(nouvelleCharge) })
-    .where(eq(objectifsExercice.exerciceId, exerciceId))
-}
+if (taux >= seuilProgression)  → charge + incrementKg
+if (taux >= seuilMaintien)     → charge inchangée
+else                           → charge × (1 - reductionEchec)
 ```
 
 ---
 
 ## État global — Zustand (store/seanceStore.ts)
 
-```typescript
-import { create } from 'zustand'
-
-type StatutSerie = 'PLANIFIEE' | 'VALIDEE' | 'INVALIDEE'
-
-interface SerieState {
-  id: number
-  chargeKg: number
-  reps: number
-  nbSeries: number
-  rpe?: number
-  statut: StatutSerie
-  autoValidee: boolean
-}
-
-interface SeanceStore {
-  seriesEnCours: SerieState[]
-  chargerSeries: (seanceId: number) => Promise<void>
-  validerSerie: (serieId: number) => Promise<void>
-  invaliderSerie: (serieId: number) => Promise<void>
-}
-
-export const useSeanceStore = create<SeanceStore>((set) => ({
-  seriesEnCours: [],
-
-  chargerSeries: async (seanceId) => {
-    const { db } = await import('../db')
-    const { series } = await import('../db/schema')
-    const { eq } = await import('drizzle-orm')
-    const data = await db.select().from(series).where(eq(series.seanceId, seanceId))
-    set({ seriesEnCours: data })
-  },
-
-  validerSerie: async (serieId) => {
-    const { db } = await import('../db')
-    const { series } = await import('../db/schema')
-    const { eq } = await import('drizzle-orm')
-    await db.update(series).set({ statut: 'VALIDEE' }).where(eq(series.id, serieId))
-    set((state) => ({
-      seriesEnCours: state.seriesEnCours.map((s) =>
-        s.id === serieId ? { ...s, statut: 'VALIDEE' } : s
-      ),
-    }))
-  },
-
-  invaliderSerie: async (serieId) => {
-    const { db } = await import('../db')
-    const { series } = await import('../db/schema')
-    const { eq } = await import('drizzle-orm')
-    await db.update(series).set({ statut: 'INVALIDEE' }).where(eq(series.id, serieId))
-    set((state) => ({
-      seriesEnCours: state.seriesEnCours.map((s) =>
-        s.id === serieId ? { ...s, statut: 'INVALIDEE' } : s
-      ),
-    }))
-  },
-}))
-```
+| Action | Description |
+|---|---|
+| `chargerSeries(seanceId)` | Charge les séries depuis la DB |
+| `chargerNotes(seanceId)` | Charge les notes depuis la DB |
+| `validerSerie(serieId)` | Passe une série en VALIDEE |
+| `invaliderSerie(serieId)` | Passe une série en INVALIDEE |
+| `modifierCharge(serieId, kg)` | Modifie la charge et trace la raison |
+| `ajouterNote(seanceId, contenu)` | Insère une note horodatée |
 
 ---
 
@@ -409,32 +271,47 @@ const volumeKg = series
   .reduce((sum, s) => sum + s.chargeKg * s.reps, 0)
 ```
 
+### Historique (app/(tabs)/historique.tsx)
+
+- Onglets par exercice
+- Courbe du 1RM estimé dans le temps (`CourbeProgression` — SVG)
+- Record personnel (1RM Epley max toutes séances confondues)
+- Graphique en barres du volume hebdomadaire (`CourbeVolume` — SVG, scrollable)
+- Liste des séances ayant au moins une série VALIDEE
+- Rafraîchissement automatique à la navigation (`useFocusEffect`)
+
 ---
 
 ## Phases de développement
 
-### Phase 1 — MVP
+### Phase 1 — MVP ✅
 - Initialisation projet Expo + Drizzle + Zustand
 - Schéma SQLite + migrations
-- Écran accueil : liste des séances datées
-- Écran séance : saisie des séries (charge, reps, nb séries, RPE)
+- Écran accueil : liste des blocs avec barre de progression
+- Écran séance : saisie des séries (charge, reps, RPE)
 - Validation / invalidation unitaire par série
 - Clôture automatique au démarrage de la séance suivante
 
-### Phase 2 — Bloc DUP
-- Écran de démarrage d'un bloc (saisie du 1RM)
+### Phase 2 — Bloc DUP ✅
+- Écran de démarrage d'un bloc (saisie du 1RM, choix exercice dynamique)
 - Génération automatique des 8 séances via dupService
-- Vue calendrier du bloc sur 4 semaines
+- Vue calendrier du bloc sur 4 semaines avec phases
+- Suppression de bloc avec cascade
 - Progression automatique entre séances
 
-### Phase 3 — Progression libre & statistiques
-- Écran de configuration des objectifs par exercice
+### Phase 3 — Progression libre & statistiques ✅
+- Écran paramètres : configuration des objectifs par exercice (auto-créés au premier lancement)
 - Seuils de progression configurables (progression / maintien / réduction)
-- Courbe du 1RM estimé (Victory Native)
-- Volume hebdomadaire par exercice
+- Courbe du 1RM estimé — SVG natif
+- Graphique volume hebdomadaire — SVG barres scrollable
 - Historique des séances avec records personnels
-- Ajustements à la volée (modifier charge, sauter un exercice, notes)
+- Modification de charge à la volée (modal inline)
+- Ajout de notes horodatées par séance
+- Clôture manuelle de séance (bouton "Clôturer ✓")
+- Validation unitaire par série (une ligne DB = une série)
+- Icônes onglets Ionicons (barbell / bar-chart / settings)
+- Rafraîchissement auto des écrans au focus (historique, calendrier, accueil)
 
 ---
 
-*Spec générée le 24 avril 2026 — stack React Native Expo / TypeScript*
+*Spec mise à jour le 10 mai 2026 — stack React Native Expo SDK 54 / TypeScript*

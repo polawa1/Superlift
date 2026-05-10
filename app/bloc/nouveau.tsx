@@ -1,20 +1,26 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native'
 import { useRouter } from 'expo-router'
 import { db } from '../../db'
-import { blocsForce, series, seances } from '../../db/schema'
+import { blocsForce, series, seances, exercices } from '../../db/schema'
 import { genererSeancesBloc } from '../../services/dupService'
-
-const EXERCICES = [
-  { id: 1, nom: 'Développé couché' },
-  { id: 2, nom: 'Squat' },
-  { id: 3, nom: 'Traction' },
-]
+import { seedExercices } from '../../db/seed'
 
 export default function NouveauBlocScreen() {
   const router = useRouter()
-  const [exerciceId, setExerciceId] = useState(1)
+  const [listeExercices, setListeExercices] = useState<{ id: number; nom: string }[]>([])
+  const [exerciceId, setExerciceId] = useState<number | null>(null)
   const [unRm, setUnRm] = useState('')
+
+  useEffect(() => {
+    async function charger() {
+      await seedExercices()
+      const rows = await db.select().from(exercices)
+      setListeExercices(rows)
+      if (rows.length > 0) setExerciceId(rows[0].id)
+    }
+    charger()
+  }, [])
 
   async function demarrerBloc() {
     const unRmKg = parseFloat(unRm)
@@ -22,6 +28,7 @@ export default function NouveauBlocScreen() {
       Alert.alert('Erreur', 'Saisis un 1RM valide')
       return
     }
+    if (!exerciceId) return
 
     const dateDebut = new Date().toISOString().split('T')[0]
 
@@ -44,14 +51,16 @@ export default function NouveauBlocScreen() {
         })
         .returning()
 
-      await db.insert(series).values({
-        seanceId: seance.id,
-        exerciceId: s.exerciceId,
-        chargeKg: s.chargeKg,
-        reps: s.reps,
-        nbSeries: s.nbSeries,
-        statut: 'PLANIFIEE',
-      })
+      for (let i = 0; i < s.nbSeries; i++) {
+        await db.insert(series).values({
+          seanceId: seance.id,
+          exerciceId: s.exerciceId,
+          chargeKg: s.chargeKg,
+          reps: s.reps,
+          nbSeries: 1,
+          statut: 'PLANIFIEE',
+        })
+      }
     }
 
     router.replace('/')
@@ -63,7 +72,7 @@ export default function NouveauBlocScreen() {
 
       <Text style={styles.label}>Exercice</Text>
       <View style={styles.exerciceList}>
-        {EXERCICES.map((ex) => (
+        {listeExercices.map((ex) => (
           <TouchableOpacity
             key={ex.id}
             style={[styles.chip, exerciceId === ex.id && styles.chipActif]}
