@@ -3,6 +3,20 @@ import { series, seances } from '../db/schema'
 import { eq, and, lt } from 'drizzle-orm'
 import { calculerProgression } from './progressionService'
 
+async function _cloturer(seanceId: number, exerciceId: number) {
+  await db
+    .update(series)
+    .set({ statut: 'VALIDEE', autoValidee: true })
+    .where(and(eq(series.seanceId, seanceId), eq(series.statut, 'PLANIFIEE')))
+
+  await db
+    .update(seances)
+    .set({ statut: 'CLOTUREE', clotureeAt: Date.now() })
+    .where(eq(seances.id, seanceId))
+
+  await calculerProgression(seanceId, exerciceId)
+}
+
 export async function cloturerSeancePrecedente(seanceIdCourante: number) {
   const [seanceCourante] = await db
     .select()
@@ -24,15 +38,11 @@ export async function cloturerSeancePrecedente(seanceIdCourante: number) {
 
   if (!precedente || precedente.statut === 'CLOTUREE') return
 
-  await db
-    .update(series)
-    .set({ statut: 'VALIDEE', autoValidee: true })
-    .where(and(eq(series.seanceId, precedente.id), eq(series.statut, 'PLANIFIEE')))
+  await _cloturer(precedente.id, precedente.exerciceId)
+}
 
-  await db
-    .update(seances)
-    .set({ statut: 'CLOTUREE', clotureeAt: Date.now() })
-    .where(eq(seances.id, precedente.id))
-
-  await calculerProgression(precedente.id, precedente.exerciceId)
+export async function cloturerSeance(seanceId: number) {
+  const [seance] = await db.select().from(seances).where(eq(seances.id, seanceId))
+  if (!seance || seance.statut === 'CLOTUREE') return
+  await _cloturer(seanceId, seance.exerciceId)
 }

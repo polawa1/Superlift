@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native'
-import { useLocalSearchParams } from 'expo-router'
+import { useState, useCallback } from 'react'
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } from 'react-native'
+import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router'
 import { db } from '../../db'
-import { seances, series, exercices, blocsForce } from '../../db/schema'
-import { eq, and } from 'drizzle-orm'
+import { seances, series, exercices, blocsForce, notesSeance } from '../../db/schema'
+import { eq, inArray } from 'drizzle-orm'
 import { SeanceCard } from '../../components/SeanceCard'
+import { Ionicons } from '@expo/vector-icons'
 
 type SeanceAvecSerie = {
   id: number
@@ -32,10 +33,13 @@ export default function CalendrierBlocScreen() {
   const [nomExercice, setNomExercice] = useState('')
   const [unRm, setUnRm] = useState(0)
   const [loading, setLoading] = useState(true)
+  const router = useRouter()
 
-  useEffect(() => {
-    chargerBloc()
-  }, [blocId])
+  useFocusEffect(
+    useCallback(() => {
+      chargerBloc()
+    }, [blocId])
+  )
 
   async function chargerBloc() {
     const [bloc] = await db
@@ -94,6 +98,26 @@ export default function CalendrierBlocScreen() {
     setLoading(false)
   }
 
+  async function supprimerBloc() {
+    Alert.alert('Supprimer le bloc', 'Toutes les séances et séries associées seront supprimées.', [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Supprimer', style: 'destructive',
+        onPress: async () => {
+          const seancesBloc = await db.select({ id: seances.id }).from(seances).where(eq(seances.blocId, blocId))
+          const seanceIds = seancesBloc.map((s) => s.id)
+          if (seanceIds.length > 0) {
+            await db.delete(notesSeance).where(inArray(notesSeance.seanceId, seanceIds))
+            await db.delete(series).where(inArray(series.seanceId, seanceIds))
+            await db.delete(seances).where(inArray(seances.id, seanceIds))
+          }
+          await db.delete(blocsForce).where(eq(blocsForce.id, blocId))
+          router.back()
+        },
+      },
+    ])
+  }
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -106,8 +130,13 @@ export default function CalendrierBlocScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* En-tête */}
       <View style={styles.entete}>
-        <Text style={styles.nomExercice}>{nomExercice}</Text>
-        <Text style={styles.unRm}>1RM : {unRm} kg</Text>
+        <View>
+          <Text style={styles.nomExercice}>{nomExercice}</Text>
+          <Text style={styles.unRm}>1RM : {unRm} kg</Text>
+        </View>
+        <TouchableOpacity style={styles.btnSupprimer} onPress={supprimerBloc}>
+          <Ionicons name="trash-outline" size={20} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       {/* Légende */}
@@ -159,7 +188,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   nomExercice: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
-  unRm: { fontSize: 14, color: '#94a3b8' },
+  unRm: { fontSize: 14, color: '#94a3b8', marginTop: 2 },
+  btnSupprimer: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center', alignItems: 'center',
+  },
 
   legende: {
     flexDirection: 'row',
